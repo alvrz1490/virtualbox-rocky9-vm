@@ -1,0 +1,57 @@
+---
+- name: Copy Kickstart file to VirtualBox host
+  copy:
+    src: ks.cfg
+    dest: /var/tmp/ks.cfg
+    mode: '0644'
+
+- name: Create VirtualBox VM
+  command: >
+    VBoxManage createvm --name rocky9-arm --ostype "RedHat_64" --register
+  args:
+    creates: "{{ lookup('env','HOME') }}/VirtualBox VMs/rocky9-arm/rocky9-arm.vbox"
+
+- name: Configure VM settings
+  command: >
+    VBoxManage modifyvm rocky9-arm
+      --memory 4096
+      --cpus 2
+      --firmware efi
+      --nic1 nat
+      --audio none
+
+- name: Create virtual disk
+  command: >
+    VBoxManage createhd
+      --filename "{{ lookup('env','HOME') }}/VirtualBox VMs/rocky9-arm/rocky9-arm.vdi"
+      --size 20000
+
+- name: Attach SATA controller
+  command: >
+    VBoxManage storagectl rocky9-arm --name "SATA Controller" --add sata --controller IntelAhci
+
+- name: Attach disk to SATA controller
+  command: >
+    VBoxManage storageattach rocky9-arm
+      --storagectl "SATA Controller"
+      --port 0
+      --device 0
+      --type hdd
+      --medium "{{ lookup('env','HOME') }}/VirtualBox VMs/rocky9-arm/rocky9-arm.vdi"
+
+- name: Attach Rocky Linux ARM ISO
+  command: >
+    VBoxManage storageattach rocky9-arm
+      --storagectl "SATA Controller"
+      --port 1
+      --device 0
+      --type dvddrive
+      --medium /iso/Rocky-9-latest-aarch64-dvd.iso
+
+- name: Boot VM with Kickstart automated install
+  command: >
+    VBoxManage startvm rocky9-arm --type headless
+
+# NOTE: To enable kickstart, ensure ISO boots with:
+# inst.ks=hd:/dev/sr0:/ks.cfg
+# You may need custom boot entry on ISO depending on Rocky ARM image.
