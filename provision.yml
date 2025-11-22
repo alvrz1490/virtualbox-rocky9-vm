@@ -1,0 +1,80 @@
+---
+- name: Provision Rocky Linux 9 ARM VM in VirtualBox
+  hosts: virtualbox_host
+  become: no
+  vars:
+    vm_name: rocky9-arm
+    iso_path: "{{ lookup('env','HOME') }}/github/iso/Rocky-9.6-aarch64-dvd.iso"
+    vm_dir: "{{ lookup('env','HOME') }}/VirtualBox VMs/{{ vm_name }}"
+    vdi_path: "{{ vm_dir }}/{{ vm_name }}.vdi"
+    ks_path: "{{ vm_dir }}/ks.cfg"
+
+  tasks:
+
+    - name: Ensure VM directory exists
+      file:
+        path: "{{ vm_dir }}"
+        state: directory
+
+    - name: Copy Kickstart file to VM directory
+      copy:
+        src: ks.cfg
+        dest: "{{ ks_path }}"
+        mode: '0644'
+
+    - name: Create ARM VirtualBox VM
+      command: >
+        VBoxManage createvm
+          --name {{ vm_name }}
+          --ostype "Other_arm64"
+          --platform-architecture arm
+          --register
+      args:
+        creates: "{{ vm_dir }}/{{ vm_name }}.vbox"
+
+    - name: Configure VM settings (ARM)
+      command: >
+        VBoxManage modifyvm {{ vm_name }}
+          --memory 4096
+          --cpus 2
+          --firmware efi
+          --nic1 nat
+          --audio none
+          --graphicscontroller VMSVGA
+
+    - name: Create virtual disk
+      command: >
+        VBoxManage createhd
+          --filename "{{ vdi_path }}"
+          --size 20000
+      args:
+        creates: "{{ vdi_path }}"
+
+    - name: Attach SATA controller
+      command: >
+        VBoxManage storagectl {{ vm_name }}
+          --name "SATA Controller"
+          --add sata
+          --controller IntelAhci
+
+    - name: Attach virtual disk to SATA controller
+      command: >
+        VBoxManage storageattach {{ vm_name }}
+          --storagectl "SATA Controller"
+          --port 0
+          --device 0
+          --type hdd
+          --medium "{{ vdi_path }}"
+
+    - name: Attach ARM ISO to VM
+      command: >
+        VBoxManage storageattach {{ vm_name }}
+          --storagectl "SATA Controller"
+          --port 1
+          --device 0
+          --type dvddrive
+          --medium "{{ iso_path }}"
+
+    - name: Start VM headless
+      command: >
+        VBoxManage startvm {{ vm_name }} --type headless
